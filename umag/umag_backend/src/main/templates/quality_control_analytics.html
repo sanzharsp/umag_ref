@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Аналитика контроля качества</title>
+
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .chart-container {
+            display: flex;
+            position: relative;
+            justify-content: center;
+            flex-direction: column;
+            align-items: center;
+            margin: auto;
+            height: auto;
+            width: 60vw;
+        }
+        .chart {
+            position: relative;
+            height: 40vh;
+            width: 60vw;
+            margin: 20px 0;
+        }
+        .fade-in {
+            animation: fadeIn 1s ease-in-out;
+        }
+        .rounded-card {
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            background-color: #fff;
+        }
+        .table th, .table td {
+            vertical-align: middle;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container fade-in mt-5">
+    <button onclick="window.location.href='/admin'" class="btn btn-secondary mb-4">Назад в админку</button>
+
+        <div class="rounded-card p-4">
+            <h1>Аналитика контроля качества</h1>
+            <p class="lead">Средняя оценка качества: {{ avg_rating }}</p>
+
+
+            <div class="chart-container">
+                <h2>Распределение оценок качества</h2>
+                <div class="chart">
+                    <canvas id="ratingChartBar"></canvas>
+                </div>
+                 <h2>Распределение оценок качества (%)</h2>
+                <div class="chart">
+                    <canvas id="ratingChartDoughnut"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="rounded-card p-4 mt-5">
+            <h2>Средняя оценка и количество отзывов по каждому типу контента</h2>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Тип контента</th>
+                        <th>Средняя оценка</th>
+                        <th>Количество отзывов</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for content_type in content_types %}
+                    <tr>
+                        <td>{{ content_type.verbose_name }}</td>
+                        <td>{{ content_type.avg_rating }}</td>
+                        <td>{{ content_type.count_reviews }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="rounded-card p-4 mt-5">
+            <h2>Детали всех отзывов</h2>
+            <form method="get" class="form-inline mb-3">
+                <select name="content_type" class="form-control mr-2">
+                    <option value="">Все типы контента</option>
+                    {% for content_type in content_types %}
+                    <option value="{{ content_type.content_type__model }}" {% if content_type_filter == content_type.content_type__model %}selected{% endif %}>
+                        {{ content_type.verbose_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <input type="date" name="start_date" class="form-control mr-2" value="{{ start_date|date:'Y-m-d' }}">
+                <input type="date" name="end_date" class="form-control mr-2" value="{{ end_date|date:'Y-m-d' }}">
+                <button type="submit" class="btn btn-primary">Фильтровать</button>
+                <a href="?{% if content_type_filter %}content_type={{ content_type_filter }}&{% endif %}{% if start_date %}start_date={{ start_date|date:'Y-m-d' }}&{% endif %}{% if end_date %}end_date={{ end_date|date:'Y-m-d' }}&{% endif %}export=excel" class="btn btn-success ml-2">Экспорт в Excel</a>
+            </form>
+
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Тип контента</th>
+                        <th>Оценка</th>
+                        <th>Дата создания</th>
+                        <th>Имя пользователя</th>
+                        <th>Наименование франшизы</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for review in page_obj %}
+                    <tr>
+                        <td>{{ review.id }}</td>
+                        <td>{{ review.content_type.model }}</td>
+                        <td>{{ review.rating }}</td>
+                        <td>{{ review.creation_date }}</td>
+                        {% if review.content_object %}
+                            {% if review.content_object.personal_data %}
+                            <td>{{ review.content_object.personal_data.first_name }}</td>
+                            <td>{{ review.content_object.personal_data.franchise_name }}</td>
+                            {% else %}
+                            <td></td>
+                            <td></td>
+                            {% endif %}
+                        {% else %}
+                            <td></td>
+                            <td></td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <nav aria-label="Page navigation">
+                <ul class="pagination">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?{% if content_type_filter %}content_type={{ content_type_filter }}&{% endif %}{% if start_date %}start_date={{ start_date|date:'Y-m-d' }}&{% endif %}{% if end_date %}end_date={{ end_date|date:'Y-m-d' }}&{% endif %}{% if search_query %}search={{ search_query }}&{% endif %}page={{ page_obj.previous_page_number }}" aria-label="Предыдущая">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                    {% endif %}
+                    {% for num in page_obj.paginator.page_range %}
+                    <li class="page-item {% if page_obj.number == num %}active{% endif %}">
+                        <a class="page-link" href="?{% if content_type_filter %}content_type={{ content_type_filter }}&{% endif %}{% if start_date %}start_date={{ start_date|date:'Y-m-d' }}&{% endif %}{% if end_date %}end_date={{ end_date|date:'Y-m-d' }}&{% endif %}{% if search_query %}search={{ search_query }}&{% endif %}page={{ num }}">{{ num }}</a>
+                    </li>
+                    {% endfor %}
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?{% if content_type_filter %}content_type={{ content_type_filter }}&{% endif %}{% if start_date %}start_date={{ start_date|date:'Y-m-d' }}&{% endif %}{% if end_date %}end_date={{ end_date|date:'Y-m-d' }}&{% endif %}{% if search_query %}search={{ search_query }}&{% endif %}page={{ page_obj.next_page_number }}" aria-label="Следующая">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+
+    <script>
+        const ratingData = {{ ratings|safe }};
+        const labels = ratingData.map(item => item.rating);
+        const counts = ratingData.map(item => item.count);
+
+        const barCtx = document.getElementById('ratingChartBar').getContext('2d');
+        new Chart(barCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Количество отзывов',
+                    data: counts,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const doughnutCtx = document.getElementById('ratingChartDoughnut').getContext('2d');
+        new Chart(doughnutCtx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Количество отзывов',
+                    data: counts,
+                    backgroundColor: [
+                        'rgba(75, 192, 192, 0.2)',
+                        'rgba(255, 99, 132, 0.2)',
+                        'rgba(255, 206, 86, 0.2)',
+                        'rgba(54, 162, 235, 0.2)',
+                        'rgba(153, 102, 255, 0.2)'
+                    ],
+                    borderColor: [
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(153, 102, 255, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    </script>
+</body>
+</html>

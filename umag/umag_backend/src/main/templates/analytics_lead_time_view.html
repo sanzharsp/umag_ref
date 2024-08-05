@@ -1,0 +1,350 @@
+{% load custom_filters %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Аналитика закрытия сделок</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #f0f2f5;
+            color: #595959;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .container {
+            margin-top: 50px;
+        }
+
+        h1 {
+            color: #1890ff;
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 700;
+        }
+
+        .form-inline {
+            justify-content: center;
+        }
+
+        .card {
+            background-color: #ffffff;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .card-header {
+            background-color: #fafafa;
+            border-bottom: 1px solid #f0f0f0;
+            text-align: center;
+            font-weight: 700;
+            color: #1890ff;
+        }
+
+        .card-body {
+            padding: 20px;
+        }
+
+        .table {
+            color: #595959;
+        }
+
+        .table th {
+            background-color: #fafafa;
+        }
+
+        .table tbody tr:hover {
+            background-color: #e6f7ff;
+        }
+
+        .pagination .page-link {
+            background-color: #ffffff;
+            color: #1890ff;
+            border: 1px solid #d9d9d9;
+        }
+
+        .pagination .page-link:hover {
+            background-color: #1890ff;
+            color: #ffffff;
+        }
+
+        .btn-primary {
+            background-color: #1890ff;
+            border: none;
+            transition: background 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            background-color: #40a9ff;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 50vh;
+            width: 100%;
+        }
+
+        .average-time {
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-align: center;
+            color: #40a9ff;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+    <button onclick="window.location.href='/admin'" class="btn btn-secondary mb-4">Назад в админку</button>
+
+        <h1>Аналитика закрытия сделок</h1>
+
+        <div class="card">
+            <div class="card-header">
+                Фильтрация
+            </div>
+            <div class="card-body">
+                <form method="GET" class="form-inline">
+                    <div class="form-group mb-2">
+                        <label for="start_date" class="mr-2">Начальная дата:</label>
+                        <input type="date" id="start_date" name="start_date" class="form-control" value="{{ request.GET.start_date }}">
+                    </div>
+                    <div class="form-group mx-sm-3 mb-2">
+                        <label for="end_date" class="mr-2">Конечная дата:</label>
+                        <input type="date" id="end_date" name="end_date" class="form-control" value="{{ request.GET.end_date }}">
+                    </div>
+                    <div class="form-group mx-sm-3 mb-2">
+                        <label for="model_filter" class="mr-2">Фильтр по модели:</label>
+                        <select id="model_filter" name="model_filter" class="form-control">
+                            <option value="">Все</option>
+                            <option value="SupportConsultation" {% if model_filter == 'SupportConsultation' %}selected{% endif %}>Консультация</option>
+                            <option value="SupportBug" {% if model_filter == 'SupportBug' %}selected{% endif %}>Баг</option>
+                            <option value="SupportSynchronization" {% if model_filter == 'SupportSynchronization' %}selected{% endif %}>Синхронизация</option>
+                            <option value="SupportGetCourse" {% if model_filter == 'SupportGetCourse' %}selected{% endif %}>Получение курса</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary mb-2">Фильтровать</button>
+                </form>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                Время закрытия сделок
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="closureTimeChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                Ежедневное время закрытия сделок
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="dailyClosureChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                Среднее время закрытия сделок
+            </div>
+            <div class="card-body">
+                <div class="average-time">
+                    Среднее время закрытия: <span id="averageTime">{{ average_time }} часов</span>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                Детали сделок
+            </div>
+            <div class="card-body">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID Сделки</th>
+                            <th>Время закрытия (Дни:Часы:Минуты)</th>
+                            <th>Тип обращения</th>
+                            <th>Детали обращения</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for deal in closure_times %}
+                        <tr>
+                            <td>{{ deal.leads_id }}</td>
+                            <td>{{ deal.days }} дней, {{ deal.hours }} часов, {{ deal.minutes }} минут</td>
+                            <td>
+                                {% if deal.consultation_data %}
+                                    {{ deal.consultation_data.0.verbose_name }}
+                                {% else %}
+                                    Неизвестно
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if deal.consultation_data %}
+                                    <ul>
+                                        {% for data in deal.consultation_data %}
+                                            {% for key, value in data.items %}
+                                                {% if key != 'additional_information' and key != 'type' and key != 'verbose_name' and key != 'verbose_names' and key != 'id' and key != 'personal_data_id' %}
+                                                    <li>
+                                                        {{ data.verbose_names|get_item:key }}: {{ value }}
+                                                    </li>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endfor %}
+                                    </ul>
+                                {% else %}
+                                    Нет данных
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <nav aria-label="Page navigation example">
+                    <ul class="pagination justify-content-center">
+                        {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}&start_date={{ request.GET.start_date }}&end_date={{ request.GET.end_date }}&model_filter={{ model_filter }}" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#">{{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</a>
+                        </li>
+                        {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}&start_date={{ request.GET.start_date }}&end_date={{ request.GET.end_date }}&model_filter={{ model_filter }}" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var closureTimes = JSON.parse('{{ closure_times_json|escapejs }}');
+            var dailyClosureData = JSON.parse('{{ daily_closure_data|escapejs }}');
+
+            var closureTimeLabels = closureTimes.map(function(deal) { return deal.leads_id; });
+            var closureTimeData = closureTimes.map(function(deal) { return deal.total_hours; });
+
+            var dailyClosureLabels = Object.keys(dailyClosureData);
+            var dailyClosureDataValues = Object.values(dailyClosureData);
+
+            var ctx = document.getElementById('closureTimeChart').getContext('2d');
+            var closureTimeChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: closureTimeLabels,
+                    datasets: [{
+                        label: 'Время закрытия сделки (часы)',
+                        data: closureTimeData,
+                        backgroundColor: 'rgba(24, 144, 255, 0.6)',
+                        borderColor: 'rgba(24, 144, 255, 1)',
+                        borderWidth: 1,
+                        hoverBackgroundColor: 'rgba(24, 144, 255, 0.8)',
+                        hoverBorderColor: 'rgba(24, 144, 255, 1)',
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: '#595959'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    var label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += Math.round(context.raw * 100) / 100;
+                                    return label + ' часов';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            var ctx2 = document.getElementById('dailyClosureChart').getContext('2d');
+            var dailyClosureChart = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: dailyClosureLabels,
+                    datasets: [{
+                        label: 'Ежедневное время закрытия сделок (часы)',
+                        data: dailyClosureDataValues,
+                        backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                        borderColor: 'rgba(40, 167, 69, 1)',
+                        borderWidth: 1,
+                        fill: true,
+                        pointBackgroundColor: '#28a745',
+                        pointBorderColor: '#28a745',
+                        pointHoverBackgroundColor: '#28a745',
+                        pointHoverBorderColor: '#28a745'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: '#595959'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    var label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += Math.round(context.raw * 100) / 100;
+                                    return label + ' часов';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

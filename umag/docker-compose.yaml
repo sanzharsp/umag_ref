@@ -1,0 +1,85 @@
+version: "3"
+
+services:
+
+
+  redis:
+    image: redis:alpine
+    restart: always
+
+  umag_backend:
+    restart: always
+    build:
+      context: ./umag_backend
+    depends_on:
+      - db
+    ports:
+      - "8004:8004"
+    image: umag_backend
+    volumes:
+      - ./persistentdata/static:/var/www/static # <--here
+      - ./persistentdata/media:/var/www/media # <--here
+      - ./db:/app/src/db
+
+  db:
+    restart: always
+    image: postgres:15-alpine
+    ports:
+      - 5432:5432
+    volumes:
+      - ./persistentdata/db:/var/lib/postgresql/data
+    env_file:
+      - ./postgresql-db/.pg-env # why - see the next step
+
+
+  nginx:
+     restart: always
+     build:
+         context: ./nginx
+     ports:
+       - "80:80" # port exposed to outside world.
+       - "443:443" # <--- add this line
+     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+     volumes:
+
+       - ./persistentdata/static:/var/www/static
+       - ./persistentdata/media:/var/www/media
+       - ./persistentdata/certbot/conf:/etc/letsencrypt # <--here
+       - ./persistentdata/certbot/www:/var/www/certbot # <--here
+
+
+  worker:
+    restart: always
+    build:
+      context: ./umag_backend
+    volumes:
+      - ./celery:/app/src/celery
+      - ./db:/app/src/db
+    depends_on:
+      - db
+    command: ['celery', '--workdir=./src', '-A', 'umag_backend', 'worker' ]
+
+
+  celery-beats:
+      restart: always
+      build:
+        context: ./umag_backend
+      volumes:
+        - ./db:/app/src/db
+      depends_on:
+        - db
+      command: [ 'celery', '--workdir=./src', '-A', 'umag_backend', 'beat', '-l', 'INFO', '--scheduler', 'django_celery_beat.schedulers:DatabaseScheduler' ]
+
+
+  certbot:
+    image: certbot/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    volumes:
+      - ./persistentdata/certbot/conf:/etc/letsencrypt # <--here
+      - ./persistentdata/certbot/www:/var/www/certbot # <--here
+
+  umag_bot: # Новый сервис
+    build:
+      context: ./umag_bot # Путь к папке с Dockerfile
+    ports:
+      - "8080:8080" # Порт, который будет открыт наружу
